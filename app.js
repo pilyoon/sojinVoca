@@ -41,7 +41,7 @@ function home() {
   const total = Object.keys(S.words).length;
   const pct = Math.min(100, st.tCnt / st.goal * 100);
   app.innerHTML = `
-    <div class="row sp"><h1>📸 소진보카</h1><button class="btn ghost sm" data-a="settings">⚙️ 설정</button></div>
+    <div class="row sp"><h1>📸 포토보카</h1><button class="btn ghost sm" data-a="settings">⚙️ 설정</button></div>
     <div class="card row">
       <div class="stat"><b>🔥 ${st.streak}</b><span>연속 학습일</span></div>
       <div class="stat"><b>${total}</b><span>전체 단어</span></div>
@@ -64,18 +64,32 @@ function home() {
 act.home = home;
 
 // ---------- 사진 → 단어 ----------
+const MAX_SHOTS = 8;
+let shots = []; // 한 번에 분석할 사진들 (모두 하나의 단어장이 됨)
 act.scan = () => {
   if (!S.key) { toast('먼저 설정에서 API 키를 입력해 주세요'); return settings(); }
+  shots = []; scanScreen();
+};
+function scanScreen() {
   app.innerHTML = `
     <div class="row sp"><h1>📷 사진으로 단어 만들기</h1><button class="btn ghost sm" data-a="home">닫기</button></div>
-    <div class="card mu">학습지 한 페이지를 찍어보세요.<br>종이를 평평하게 펴고, 글씨가 또렷하게 나오도록 위에서 찍으면 더 정확해요.</div>
-    <button class="btn" data-a="shoot">📸 카메라로 찍기</button>
-    <button class="btn sec" data-a="pick">🖼️ 앨범에서 고르기</button>`;
-};
+    <div class="card mu">학습지를 여러 장 찍어도 하나의 단어장으로 만들어요. (최대 ${MAX_SHOTS}장)<br>종이를 평평하게 펴고, 글씨가 또렷하게 나오도록 위에서 찍으면 더 정확해요.</div>
+    ${shots.length ? `<div class="row" style="flex-wrap:wrap">${shots.map((s, i) => `
+      <div style="position:relative"><img src="${s}" style="width:92px;height:92px;object-fit:cover;border-radius:12px">
+      <button class="btn sm" style="position:absolute;top:-6px;right:-6px;padding:2px 8px;border-radius:50%" data-a="rmShot" data-i="${i}">✕</button></div>`).join('')}</div>
+    <button class="btn" data-a="analyze">🔍 ${shots.length}장 분석하기</button>` : ''}
+    <button class="btn ${shots.length ? 'sec' : ''}" data-a="shoot" ${shots.length >= MAX_SHOTS ? 'disabled' : ''}>📸 ${shots.length ? '한 장 더 ' : ''}카메라로 찍기</button>
+    <button class="btn sec" data-a="pick" ${shots.length >= MAX_SHOTS ? 'disabled' : ''}>🖼️ 앨범에서 고르기 (여러 장 가능)</button>`;
+}
 act.shoot = () => $('#cam').click();
 act.pick = () => $('#gallery').click();
-['cam', 'gallery'].forEach(id => $('#' + id).addEventListener('change', e => {
-  const f = e.target.files[0]; e.target.value = ''; if (f) analyze(f);
+act.rmShot = d => { shots.splice(+d.i, 1); scanScreen(); };
+act.analyze = () => analyze();
+['cam', 'gallery'].forEach(id => $('#' + id).addEventListener('change', async e => {
+  const files = [...e.target.files].slice(0, MAX_SHOTS - shots.length); e.target.value = '';
+  if (!files.length) return;
+  try { for (const f of files) shots.push(await toJpeg(f)); } catch (err) { toast(err.message); }
+  scanScreen();
 }));
 
 function toJpeg(file, max = 1800) { // 학습지의 작은 글씨를 읽기 위해 해상도를 높게 유지
@@ -92,11 +106,11 @@ function toJpeg(file, max = 1800) { // 학습지의 작은 글씨를 읽기 위�
   });
 }
 
-async function analyze(file) {
-  app.innerHTML = `<div class="spin"><i></i><div>사진 속 단어를 찾고 있어요...</div></div>`;
+async function analyze() {
+  const imgs = shots;
+  app.innerHTML = `<div class="spin"><i></i><div>사진 ${imgs.length}장에서 단어를 찾고 있어요...</div></div>`;
   try {
-    const dataUrl = await toJpeg(file);
-    const prompt = `이 사진은 한국 어린이(${S.level})의 영어 학습지(교재·워크북) 페이지입니다. 이 페이지로 공부할 영어 단어를 최대 30개 뽑아주세요.
+    const prompt = `첨부한 ${imgs.length}장의 사진은 한 어린이(${S.level})의 영어 학습지(교재·워크북) 페이지들로, 하나의 학습 범위입니다. 전체를 합쳐서 공부할 영어 단어를 ${imgs.length > 1 ? '최대 60개' : '최대 30개'} 뽑아주세요. 여러 페이지에 같은 단어가 나오면 한 번만 쓰세요.
 - 페이지에 인쇄된 영어 단어/표현(단어 목록, 빈칸 문제, 지문, 보기, 그림 설명)만 대상으로 하세요. 그림 속 사물을 추측해서 만들지 마세요.
 - 학습지에 단어 목록이 있으면 그 단어들을 우선하고, 한국어 뜻이 적혀 있으면 그 뜻을 따르세요. 없으면 문맥에 맞는 쉬운 뜻을 쓰세요.
 - 단어는 소문자 기본형(a/the/is 같은 쉬운 기능어, 이름, 숫자 표기는 제외), 중복 금지. 구(phrase)는 학습지에 단어처럼 제시된 경우만 허용.
@@ -110,9 +124,9 @@ JSON만 출력하세요: {"title":"","words":[{"word":"","ko":"","pos":"n.|v.|ad
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: MODEL, max_tokens: 6000,
+        model: MODEL, max_tokens: 10000,
         messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: dataUrl.split(',')[1] } },
+          ...imgs.map(d => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: d.split(',')[1] } })),
           { type: 'text', text: prompt }] }]
       })
     });
@@ -122,18 +136,18 @@ JSON만 출력하세요: {"title":"","words":[{"word":"","ko":"","pos":"n.|v.|ad
     const data = JSON.parse(m[0]);
     const words = (data.words || []).filter(w => w.word && w.ko);
     if (!words.length) throw new Error('단어를 찾지 못했어요. 다시 찍어볼까요?');
-    review(dataUrl, data.title || '사진 단어장', words);
+    review(imgs, data.title || '사진 단어장', words);
   } catch (e) {
-    toast(e.message || '오류가 발생했어요'); act.scan();
+    toast(e.message || '오류가 발생했어요'); scanScreen(); // 찍어둔 사진은 유지
   }
 }
 
-function review(img, title, words) {
+function review(imgs, title, words) {
   const sel = words.map(() => true);
   const draw = () => {
     app.innerHTML = `
       <h1>찾은 단어 ${words.length}개</h1>
-      <img class="thumb" src="${img}" style="object-fit:contain;background:#fff">
+      <div class="row" style="overflow-x:auto">${imgs.map(s => `<img src="${s}" style="height:110px;border-radius:10px;background:#fff">`).join('')}</div>
       <div class="opts">${words.map((w, i) => `
         <label class="chip ${sel[i] ? '' : 'off'}" style="margin:0;color:inherit">
           <input type="checkbox" data-i="${i}" ${sel[i] ? 'checked' : ''}>
