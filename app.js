@@ -41,7 +41,7 @@ function home() {
   const total = Object.keys(S.words).length;
   const pct = Math.min(100, st.tCnt / st.goal * 100);
   app.innerHTML = `
-    <div class="row sp"><h1>📸 포토보카</h1><button class="btn ghost sm" data-a="settings">⚙️ 설정</button></div>
+    <div class="row sp"><h1>📸 소진보카</h1><button class="btn ghost sm" data-a="settings">⚙️ 설정</button></div>
     <div class="card row">
       <div class="stat"><b>🔥 ${st.streak}</b><span>연속 학습일</span></div>
       <div class="stat"><b>${total}</b><span>전체 단어</span></div>
