@@ -326,14 +326,14 @@ function settings() {
   app.innerHTML = `<div class="row sp"><h1>⚙️ 설정</h1><button class="btn ghost sm" data-a="home">닫기</button></div>
     <div class="card"><label>Anthropic API 키 (사진 분석용 · 이 기기에만 저장돼요)</label>
       <input type="password" id="key" value="${esc(S.key)}" placeholder="sk-ant-..."></div>
-    <div class="card"><label>아이 수준</label>
-      <select id="lv">${['유치원', '초등 저학년', '초등 고학년', '중학생'].map(v => `<option ${v === S.level ? 'selected' : ''}>${v}</option>`).join('')}</select>
-      <label style="margin-top:12px">하루 목표 (문제 수)</label>
-      <select id="goal">${[5, 10, 20, 30].map(v => `<option ${v === S.stats.goal ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+    <div class="card"><label>하루 목표 (문제 수)</label>
+      <input type="number" id="goal" min="1" max="500" inputmode="numeric" value="${S.stats.goal}"></div>
     <button class="btn" id="saveSet">저장</button>
     <button class="btn ghost" id="reset">모든 학습 기록 초기화</button>`;
   $('#saveSet').onclick = () => {
-    S.key = $('#key').value.trim(); S.level = $('#lv').value; S.stats.goal = +$('#goal').value; save(); toast('저장했어요'); home();
+    const goal = Math.round(+$('#goal').value);
+    if (!(goal >= 1 && goal <= 500)) return toast('하루 목표는 1~500 사이 숫자로 입력해 주세요');
+    S.key = $('#key').value.trim(); S.stats.goal = goal; save(); toast('저장했어요'); home();
   };
   $('#reset').onclick = () => { if (confirm('정말 모두 지울까요?')) { localStorage.removeItem('pv'); location.reload(); } };
 }
