@@ -37,7 +37,7 @@ h2{font-size:18px;margin:0}
 .chip .w b{font-size:18px}
 .chip .w div{font-size:13px;color:var(--mu)}
 .chip input{width:22px;height:22px}
-input[type=text],input[type=password],select{width:100%;padding:12px;font-size:16px;border:2px solid #c7d2fe;border-radius:12px;background:#fff}
+input[type=text],input[type=password],input[type=number],select{width:100%;padding:12px;font-size:16px;border:2px solid #c7d2fe;border-radius:12px;background:#fff}
 label{font-size:14px;color:var(--mu);display:block;margin-bottom:4px}
 .spk{border:0;background:var(--pl);border-radius:50%;width:48px;height:48px;font-size:24px;cursor:pointer;align-self:center}
 .shake{animation:sh .3s}
