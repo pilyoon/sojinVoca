@@ -5,14 +5,23 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const dayNum = () => Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 864e5);
 const INTERVAL = [0, 1, 2, 4, 7, 14]; // 박스별 복습 간격(일)
-const MODEL = 'claude-sonnet-5-5';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 
 // ---------- 저장소 ----------
-let S = JSON.parse(localStorage.getItem('pv') || 'null') || {
+// HTML 뷰어 앱처럼 localStorage가 막힌 환경에서도 (저장은 안 되더라도) 동작하도록 보호
+let storeOk = true;
+const store = {
+  get: k => { try { return localStorage.getItem(k); } catch { storeOk = false; return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch { storeOk = false; } },
+  del: k => { try { localStorage.removeItem(k); } catch { storeOk = false; } }
+};
+let S = JSON.parse(store.get('pv') || 'null') || {
   decks: [], words: {}, key: '', level: '초등 저학년',
   stats: { streak: 0, last: 0, tDay: 0, tCnt: 0, goal: 10 }
 };
-const save = () => localStorage.setItem('pv', JSON.stringify(S));
+if (/^sk-ant-/.test(S.key || '')) S.key = ''; // 예전 Anthropic 키는 쓸 수 없음
+if (!S.model) S.model = DEFAULT_MODEL;
+const save = () => store.set('pv', JSON.stringify(S));
 const mk = (word, ko, pos, ex, exKo, emoji, deck) =>
   ({ id: 'w_' + word.toLowerCase(), word, ko, pos, ex, exKo, emoji, deck, box: 0, due: 0, seen: 0, ok: 0, ng: 0 });
 if (!S.decks.length) { // 첫 실행: 기본 단어장 (사진 단어장보다 항상 오래된 것으로 취급)
@@ -117,21 +126,24 @@ async function analyze() {
 - ex는 학습지에 나온 문장이 있으면 그것을, 없으면 ${S.level} 수준의 짧은 영어 예문을 쓰세요. exKo는 예문 해석, emoji는 뜻을 나타내는 이모지 1개.
 - title은 학습지의 단원/제목(예: "Unit 3 Animals")이 보이면 그것을, 없으면 내용을 나타내는 짧은 제목.
 JSON만 출력하세요: {"title":"","words":[{"word":"","ko":"","pos":"n.|v.|adj.|adv.","ex":"","exKo":"","emoji":""}]}`;
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(S.model || DEFAULT_MODEL)}:generateContent`, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json', 'x-api-key': S.key, 'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': S.key },
       body: JSON.stringify({
-        model: MODEL, max_tokens: 10000,
-        messages: [{ role: 'user', content: [
-          ...imgs.map(d => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: d.split(',')[1] } })),
-          { type: 'text', text: prompt }] }]
+        contents: [{ role: 'user', parts: [
+          ...imgs.map(d => ({ inline_data: { mime_type: 'image/jpeg', data: d.split(',')[1] } })),
+          { text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 10000, temperature: 0.2 }
       })
     });
-    if (!r.ok) throw new Error(r.status === 401 ? 'API 키가 올바르지 않아요' : `분석 실패 (${r.status})`);
-    const txt = (await r.json()).content.map(c => c.text || '').join('');
+    if (!r.ok) {
+      const msg = r.status === 400 || r.status === 401 || r.status === 403 ? 'API 키가 올바르지 않아요'
+        : r.status === 429 ? '오늘 무료 사용량을 다 썼어요. 잠시 후 또는 내일 다시 해주세요'
+        : r.status === 404 ? '모델 이름이 올바르지 않아요 (설정에서 확인)'
+        : `분석 실패 (${r.status})`;
+      throw new Error(msg);
+    }
+    const txt = ((await r.json()).candidates?.[0]?.content?.parts || []).map(c => c.text || '').join('');
     const m = txt.match(/\{[\s\S]*\}/); if (!m) throw new Error('결과를 읽지 못했어요');
     const data = JSON.parse(m[0]);
     const words = (data.words || []).filter(w => w.word && w.ko);
@@ -338,8 +350,11 @@ act.delDeck = d => {
 // ---------- 설정 ----------
 function settings() {
   app.innerHTML = `<div class="row sp"><h1>⚙️ 설정</h1><button class="btn ghost sm" data-a="home">닫기</button></div>
-    <div class="card"><label>Anthropic API 키 (사진 분석용 · 이 기기에만 저장돼요)</label>
-      <input type="password" id="key" value="${esc(S.key)}" placeholder="sk-ant-..."></div>
+    <div class="card"><label>Google Gemini API 키 (사진 분석용 · 이 기기에만 저장돼요)</label>
+      <input type="password" id="key" value="${esc(S.key)}" placeholder="AIza..."></div>
+    <div class="card"><label>Gemini 모델 (기본값 그대로 두세요)</label>
+      <input type="text" id="model" value="${esc(S.model)}" placeholder="${DEFAULT_MODEL}"></div>
+    ${storeOk ? '' : '<div class="card mu">⚠️ 이 앱(뷰어)에서는 저장이 안 될 수 있어요. 앱을 닫으면 키와 단어장이 사라질 수 있어요.</div>'}
     <div class="card"><label>하루 목표 (문제 수)</label>
       <input type="number" id="goal" min="1" max="500" inputmode="numeric" value="${S.stats.goal}"></div>
     <button class="btn" id="saveSet">저장</button>
@@ -347,9 +362,9 @@ function settings() {
   $('#saveSet').onclick = () => {
     const goal = Math.round(+$('#goal').value);
     if (!(goal >= 1 && goal <= 500)) return toast('하루 목표는 1~500 사이 숫자로 입력해 주세요');
-    S.key = $('#key').value.trim(); S.stats.goal = goal; save(); toast('저장했어요'); home();
+    S.key = $('#key').value.trim(); S.model = $('#model').value.trim() || DEFAULT_MODEL; S.stats.goal = goal; save(); toast('저장했어요'); home();
   };
-  $('#reset').onclick = () => { if (confirm('정말 모두 지울까요?')) { localStorage.removeItem('pv'); location.reload(); } };
+  $('#reset').onclick = () => { if (confirm('정말 모두 지울까요?')) { store.del('pv'); location.reload(); } };
 }
 act.settings = settings;
 
