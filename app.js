@@ -351,7 +351,7 @@ act.delDeck = d => {
 function settings() {
   app.innerHTML = `<div class="row sp"><h1>⚙️ 설정</h1><button class="btn ghost sm" data-a="home">닫기</button></div>
     <div class="card"><label>Google Gemini API 키 (사진 분석용 · 이 기기에만 저장돼요)</label>
-      <input type="password" id="key" value="${esc(S.key)}" placeholder="AIza..."></div>
+      <input type="password" id="key" value="${esc(S.key)}" placeholder="발급받은 API 키를 붙여넣으세요"></div>
     <div class="card"><label>Gemini 모델 (기본값 그대로 두세요)</label>
       <input type="text" id="model" value="${esc(S.model)}" placeholder="${DEFAULT_MODEL}"></div>
     ${storeOk ? '' : '<div class="card mu">⚠️ 이 앱(뷰어)에서는 저장이 안 될 수 있어요. 앱을 닫으면 키와 단어장이 사라질 수 있어요.</div>'}
@@ -362,7 +362,7 @@ function settings() {
   $('#saveSet').onclick = () => {
     const goal = Math.round(+$('#goal').value);
     if (!(goal >= 1 && goal <= 500)) return toast('하루 목표는 1~500 사이 숫자로 입력해 주세요');
-    S.key = $('#key').value.trim(); S.model = $('#model').value.trim() || DEFAULT_MODEL; S.stats.goal = goal; save(); toast('저장했어요'); home();
+    S.key = $('#key').value.replace(/[\s"'`]/g, ''); S.model = $('#model').value.trim() || DEFAULT_MODEL; S.stats.goal = goal; save(); toast('저장했어요'); home();
   };
   $('#reset').onclick = () => { if (confirm('정말 모두 지울까요?')) { store.del('pv'); location.reload(); } };
 }
