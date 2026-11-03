@@ -5,7 +5,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const dayNum = () => Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 864e5);
 const INTERVAL = [0, 1, 2, 4, 7, 14]; // 박스별 복습 간격(일)
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+const DEFAULT_MODEL = 'gemini-flash-latest';
 
 // ---------- 저장소 ----------
 // HTML 뷰어 앱처럼 localStorage가 막힌 환경에서도 (저장은 안 되더라도) 동작하도록 보호
@@ -126,16 +126,27 @@ async function analyze() {
 - ex는 학습지에 나온 문장이 있으면 그것을, 없으면 ${S.level} 수준의 짧은 영어 예문을 쓰세요. exKo는 예문 해석, emoji는 뜻을 나타내는 이모지 1개.
 - title은 학습지의 단원/제목(예: "Unit 3 Animals")이 보이면 그것을, 없으면 내용을 나타내는 짧은 제목.
 JSON만 출력하세요: {"title":"","words":[{"word":"","ko":"","pos":"n.|v.|adj.|adv.","ex":"","exKo":"","emoji":""}]}`;
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(S.model || DEFAULT_MODEL)}:generateContent`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': S.key },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [
-          ...imgs.map(d => ({ inline_data: { mime_type: 'image/jpeg', data: d.split(',')[1] } })),
-          { text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 10000, temperature: 0.2 }
-      })
+    const body = JSON.stringify({
+      contents: [{ role: 'user', parts: [
+        ...imgs.map(d => ({ inline_data: { mime_type: 'image/jpeg', data: d.split(',')[1] } })),
+        { text: prompt }] }],
+      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 10000, temperature: 0.2 }
     });
+    const call = model => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-goog-api-key': S.key }, body });
+    let r = await call(S.model || DEFAULT_MODEL);
+    if (r.status === 404) { // 모델이 종료/변경됐으면 사용 가능한 flash 모델을 찾아 한 번 재시도
+      try {
+        const ml = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': S.key } });
+        const names = ((await ml.json()).models || [])
+          .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+          .map(m => m.name.replace(/^models\//, ''))
+          .filter(n => /^gemini-[\d.]+-flash$/.test(n))
+          .sort((a, b) => parseFloat(b.split('-')[1]) - parseFloat(a.split('-')[1]));
+        const alt = names.find(n => n !== S.model) || 'gemini-flash-latest';
+        if (alt !== S.model) { r = await call(alt); if (r.ok) { S.model = alt; save(); } }
+      } catch (_) { /* 원래 오류로 처리 */ }
+    }
     if (!r.ok) {
       const msg = r.status === 400 || r.status === 401 || r.status === 403 ? 'API 키가 올바르지 않아요'
         : r.status === 429 ? '오늘 무료 사용량을 다 썼어요. 잠시 후 또는 내일 다시 해주세요'
